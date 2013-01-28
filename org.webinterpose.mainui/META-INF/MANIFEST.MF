@@ -1,0 +1,15 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: WebInterpose
+Bundle-SymbolicName: org.webinterpose.mainui; singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Activator: org.webinterpose.mainui.Activator
+Require-Bundle: org.eclipse.ui,
+ org.eclipse.core.runtime,
+ org.eclipse.core.databinding;bundle-version="1.4.1",
+ org.eclipse.core.databinding.beans,
+ org.eclipse.core.databinding.property,
+ org.eclipse.jface.databinding,
+ com.ibm.icu
+Bundle-ActivationPolicy: lazy
+Bundle-RequiredExecutionEnvironment: JavaSE-1.7
