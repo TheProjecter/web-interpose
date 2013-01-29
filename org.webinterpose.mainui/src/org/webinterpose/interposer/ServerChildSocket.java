@@ -180,27 +180,31 @@ public class ServerChildSocket implements Runnable {
 		return newOffset;
 	}
 
-	private int unchunckedBuffer(byte[] b, int filePos) {
+	private int unchunckedBuffer(byte[] b, int filePos, int bytesRead) {
 		int writePos = filePos;
-		while (true) {
+		while (filePos < bytesRead) {
 			int chunckSize = 0;
-			// skipp size bytes and compute chunckSize
-			for (; ; filePos++) {
+			// skip size bytes and compute chunckSize
+			for (; filePos < bytesRead; filePos++) {
 				byte currentByte = b[filePos];
 				if (currentByte == 0x0D) {
-					filePos++;
+					filePos+=2; // "\r\n before payload
 					break;
 				}
+				
+				// pipeline conditional
 				currentByte = (byte) (currentByte - 0x30);
 				currentByte = (byte) (currentByte > 0x9?currentByte - 0x7:currentByte);
 				currentByte = (byte) (currentByte > 0xF?currentByte - 0x20:currentByte);
 				chunckSize = chunckSize == 0?currentByte:(chunckSize << 4) + currentByte;
 			}
+			if (chunckSize == 0) break;
 			System.arraycopy(b, filePos, b, writePos, chunckSize);
 			writePos += chunckSize;
-			break;
+			filePos += chunckSize;
+			filePos += 2; // "\r\n after payload
 		}
-		return 0;
+		return writePos;
 	}
 
 	@Override
@@ -260,7 +264,7 @@ public class ServerChildSocket implements Runnable {
 					osMappedFile = new FileOutputStream(mappedFile);
 				}
 
-				int lengthToWrite = 0;
+				int bytesRead = 0;
 				mustTakeCareOfHeaders = true;
 				Arrays.fill(b, (byte) 0);
 
@@ -286,22 +290,22 @@ public class ServerChildSocket implements Runnable {
 					while (!server.toBreak
 							&& lengthRead >= 0
 							&& (mustTakeCareOfHeaders || isWebServer
-									.available() > 0) && lengthToWrite != -1) {
-						lengthToWrite = isWebServer.read(b);
-						trace("AUO2 loop " + lengthToWrite + " "
+									.available() > 0) && bytesRead != -1) {
+						bytesRead = isWebServer.read(b);
+						trace("AUO2 loop " + bytesRead + " "
 								+ new String(b, 0, 512));
 
-						if (lengthToWrite > 0)
-							osBrowser.write(b, 0, lengthToWrite);
+						if (bytesRead > 0)
+							osBrowser.write(b, 0, bytesRead);
 
 						if (osMappedFile != null) {
 							// save file if resource mapped (and file does not
 							// exist
 							int filePos = computeFileBufferOffsetInServerMessage(
 									b, mustTakeCareOfHeaders);
-							unchunckedBuffer(b, filePos);
-							osMappedFile.write(b, filePos, lengthToWrite
-									- filePos);
+							int lastWritePos = unchunckedBuffer(b, filePos, bytesRead);
+							trace("AUO-------"+(lastWritePos - filePos)+"----------- "+new String(b, filePos, 512));
+							osMappedFile.write(b, filePos, lastWritePos - filePos);
 						}
 						Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);
 						mustTakeCareOfHeaders = false;
