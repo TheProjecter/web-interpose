@@ -114,9 +114,15 @@ public class InterposerView extends ViewPart {
 		}
 	};
 	private TableColumn tblclmnDistantUrl;
+	
+	// ugly but straightforward
 	public class Mapping {
 		String distantFileUrl;
 		String localFilePath;
+		public String contentType;
+		public String transferEncoding;
+		public String contentEncoding;
+		public String vary;
 		public Mapping(String url) { distantFileUrl = url; }
 		public Mapping(String url, String path) { 
 			distantFileUrl = url; 
@@ -124,11 +130,11 @@ public class InterposerView extends ViewPart {
 		}
 		public String getLocalDirectory() {return baseFolder; }
 		public String getLocalFilePath() { return localFilePath; }
+		public String getDistantFileUrl() {	return distantFileUrl; }
 		public void setLocalFilePath(String path) { 
 			this.localFilePath = path;
 			changeMapping(this);
 		}
-		public String getDistantFileUrl() {	return distantFileUrl; }
 	}
 
 	public void createPartControl(Composite parent) {
@@ -279,8 +285,16 @@ public class InterposerView extends ViewPart {
 					if (m.length() == 0) continue;
 					int posComma = m.indexOf(",");
 					String url = m.substring(0,posComma);
-					String path = m.substring(posComma + 1);
-					mappingRestored.add(new Mapping(url, path));
+					int posComma2 = m.indexOf(",", ++posComma);
+					String path = m.substring(posComma);
+					String ct = null;
+					if (posComma2 != -1) {
+						path = m.substring(posComma, posComma2++);
+						ct = m.substring(posComma2);
+					}
+					Mapping mr = new Mapping(url, path);
+					mr.contentType = ct;
+					mappingRestored.add(mr);
 				}
 				addToMapping(mappingRestored);
 			}
@@ -404,7 +418,11 @@ public class InterposerView extends ViewPart {
 			Mapping m = (Mapping)mo;
 			if (m.localFilePath != null && m.localFilePath.length() > 0	&& 
 					m.distantFileUrl != null && m.distantFileUrl.length() > 0) {
-				mappingsString.append("|"+m.distantFileUrl+","+m.localFilePath);
+				String ct = "";
+				if (m.contentType != null) {
+					ct = "," + m.contentType;
+				}
+				mappingsString.append("|"+m.distantFileUrl+","+m.localFilePath+ct);
 			}
 		}
 
