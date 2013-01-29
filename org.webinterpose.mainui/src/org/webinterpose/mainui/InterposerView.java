@@ -61,20 +61,32 @@ public class InterposerView extends ViewPart {
 	final Vector<String> urlsToAdd = new Vector<>();
 	final Map<String, Mapping> mapOfAllMapping = new TreeMap<>();
 	public final Map<String, Mapping> mapOfMappedMapping = new TreeMap<>();
-	
+
 	private void addToMapping(Collection<Mapping> c) {
 		Vector<Mapping> ms = new Vector<>();
 		for (Mapping m : c) {
 			if (!mapOfAllMapping.containsKey(m.distantFileUrl)) {
 				mapOfAllMapping.put(m.distantFileUrl, m);
 				ms.add(m);
-				
+
 				if (m.localFilePath != null && m.localFilePath != "") {
 					mapOfMappedMapping.put(m.distantFileUrl, m);
 				}
 			}
 		}
 		mappings.addAll(ms);
+	}
+
+	private void changeMapping(Mapping m) {
+		if (m.localFilePath != null && !"".equals(m.localFilePath)) {
+			if (!mapOfMappedMapping.containsKey(m.distantFileUrl)) {
+				mapOfMappedMapping.put(m.distantFileUrl, m);
+			}
+		} else {
+			if (mapOfMappedMapping.containsKey(m.distantFileUrl)) {
+				mapOfMappedMapping.remove(m.distantFileUrl);
+			}
+		}
 	}
 
 	private void addToMappingUrls(Collection<String> c) {
@@ -88,7 +100,7 @@ public class InterposerView extends ViewPart {
 		}
 		mappings.addAll(ms);
 	}
-	
+
 	final Runnable addMappingToAddRunnable = new Runnable() {
 
 		@Override
@@ -106,10 +118,16 @@ public class InterposerView extends ViewPart {
 		String distantFileUrl;
 		String localFilePath;
 		public Mapping(String url) { distantFileUrl = url; }
-		public Mapping(String url, String path) { distantFileUrl = url; localFilePath = path;}
+		public Mapping(String url, String path) { 
+			distantFileUrl = url; 
+			localFilePath = path;
+		}
 		public String getLocalDirectory() {return baseFolder; }
 		public String getLocalFilePath() { return localFilePath; }
-		public void setLocalFilePath(String path) { this.localFilePath = path; }
+		public void setLocalFilePath(String path) { 
+			this.localFilePath = path;
+			changeMapping(this);
+		}
 		public String getDistantFileUrl() {	return distantFileUrl; }
 	}
 
@@ -166,7 +184,7 @@ public class InterposerView extends ViewPart {
 				String l2 = ((Mapping)e2).localFilePath;
 				l1 = l1 == null?"":l1;
 				l2 = l2 == null?"":l2;
-				
+
 				return l1.compareTo(l2);
 			}
 			@Override
@@ -182,7 +200,7 @@ public class InterposerView extends ViewPart {
 				String l2 = ((Mapping)e2).distantFileUrl;
 				l1 = l1 == null?"":l1;
 				l2 = l2 == null?"":l2;
-				
+
 				return l1.compareTo(l2);
 			}
 			@Override
@@ -237,7 +255,7 @@ public class InterposerView extends ViewPart {
 		fd_txtBaseFolder.left = new FormAttachment(lblBaseFolder, 17);
 		txtBaseFolder.setLayoutData(fd_txtBaseFolder);
 		txtBaseFolder.addModifyListener(new ModifyListener() {
-			
+
 			@Override
 			public void modifyText(ModifyEvent e) {
 				baseFolder = ((Text)e.getSource()).getText();
@@ -246,14 +264,14 @@ public class InterposerView extends ViewPart {
 		initDataBindings();
 		txtPort.setText("50008");
 		if (memento != null) {
-			Integer memPort = memento.getInteger("txtPort");
+			Integer memPort = memento.getInteger(TXT_PORT);
 			txtPort.setText(memPort != null?memPort.toString():"50008");
-			String memBaseFolder = memento.getString("txtBaseFolder");
+			String memBaseFolder = memento.getString(TXT_BASE_FOLDER);
 			txtBaseFolder.setText(memBaseFolder != null?memBaseFolder:"");
-			String memDomain = memento.getString("txtDomain");
+			String memDomain = memento.getString(TXT_DOMAIN);
 			txtDomain.setText(memDomain != null?memDomain:"");
 
-			String memMappings = memento.getString("mappingsString");
+			String memMappings = memento.getString(STRING_MAPPINGS);
 			if (memMappings != null && memMappings.length() > 0) {
 				String[] mappingsToRestore = memMappings.split("\\|");
 				Vector<Mapping> mappingRestored = new Vector<>();
@@ -267,14 +285,14 @@ public class InterposerView extends ViewPart {
 				addToMapping(mappingRestored);
 			}
 			baseFolder = txtBaseFolder.getText();
-			if (memento.getInteger("tblclmnDistantUrlWidth") != null) {
-				tblclmnDistantUrl.setWidth(memento.getInteger("tblclmnDistantUrlWidth"));
+			if (memento.getInteger(INT_COLWIDTH) != null) {
+				tblclmnDistantUrl.setWidth(memento.getInteger(INT_COLWIDTH));
 			}
 		}
 
 		final ServerMainSocket server = new ServerMainSocket(Integer.parseInt(txtPort.getText()), mapOfMappedMapping);
 		server.setDomain(txtDomain.getText());
-		
+
 		server.setChildListener(new AddChildAdapter() {
 			@Override
 			public void addFileUrl(final String url) {
@@ -292,7 +310,7 @@ public class InterposerView extends ViewPart {
 				});
 			}
 		});
-		
+
 		btnStart.addMouseListener(new MouseAdapter() {
 
 			Thread w;
@@ -367,12 +385,18 @@ public class InterposerView extends ViewPart {
 		}
 		return validMappings;
 	} 
+
+	final private String TXT_PORT = "txtPort";
+	final private String TXT_BASE_FOLDER = "txtBaseFolder";
+	final private String TXT_DOMAIN = "txtDomain";
+	final private String STRING_MAPPINGS = "mappingsString";
+	final private String INT_COLWIDTH = "tblclmnDistantUrlWidth";
 	
 	@Override
 	public void saveState(IMemento memento) {
-		memento.putInteger("txtPort", Integer.parseInt(txtPort.getText()));
-		memento.putString("txtBaseFolder", txtBaseFolder.getText());
-		memento.putString("txtDomain", txtDomain.getText());
+		memento.putInteger(TXT_PORT, Integer.parseInt(txtPort.getText()));
+		memento.putString(TXT_BASE_FOLDER, txtBaseFolder.getText());
+		memento.putString(TXT_DOMAIN, txtDomain.getText());
 
 		Object ms[] = mappings.toArray();
 		StringBuffer mappingsString = new StringBuffer(512);
@@ -384,9 +408,8 @@ public class InterposerView extends ViewPart {
 			}
 		}
 
-		memento.putString("mappingsString", mappingsString.toString());
-
-		memento.putInteger("tblclmnDistantUrlWidth", tblclmnDistantUrl.getWidth());
+		memento.putString(STRING_MAPPINGS, mappingsString.toString());
+		memento.putInteger(INT_COLWIDTH, tblclmnDistantUrl.getWidth());
 
 		super.saveState(memento);
 	}
