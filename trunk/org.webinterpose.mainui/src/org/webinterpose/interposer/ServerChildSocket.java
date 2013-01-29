@@ -95,6 +95,10 @@ public class ServerChildSocket implements Runnable {
 
 			mappedFile = new File(m.getLocalDirectory() + m.getLocalFilePath());
 			mappedFileExists = mappedFile.exists(); // && mappedFile.canRead();
+			if (!mappedFileExists) {
+				File enclosingDir = mappedFile.getParentFile();
+				enclosingDir.mkdirs();
+			}
 			trace("Mapped file exist: " + mappedFileExists + " url "
 					+ m.getDistantFileUrl() + " File " + m.getLocalFilePath());
 		}
