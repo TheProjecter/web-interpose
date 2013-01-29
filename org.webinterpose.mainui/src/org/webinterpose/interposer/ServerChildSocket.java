@@ -71,6 +71,7 @@ public class ServerChildSocket implements Runnable {
 	private final static int HEADER_BROWSER_SIZE = 1024;
 	private final static int HEADER_SERVER_SIZE = 512;
 	private final static int THE_WAIT_THAT_I_DONT_WANT = 100;
+	private Mapping mapping = null;
 
 	private int transformRequestMessage(byte[] b, int length)
 			throws IOException {
@@ -91,16 +92,18 @@ public class ServerChildSocket implements Runnable {
 					.replace("Accept-Encoding", "AUO-invalid2")
 					.replace("Cache-Control: ", "Cache-Control: no-cache,")
 					.replace("If-Modified-Since", "AUO-invalid");
-			Mapping m = server.mapOfMappedMapping.get(resource);
+			mapping = server.mapOfMappedMapping.get(resource);
 
-			mappedFile = new File(m.getLocalDirectory() + m.getLocalFilePath());
+			mappedFile = new File(mapping.getLocalDirectory()
+					+ mapping.getLocalFilePath());
 			mappedFileExists = mappedFile.exists(); // && mappedFile.canRead();
 			if (!mappedFileExists) {
 				File enclosingDir = mappedFile.getParentFile();
 				enclosingDir.mkdirs();
 			}
 			trace("Mapped file exist: " + mappedFileExists + " url "
-					+ m.getDistantFileUrl() + " File " + m.getLocalFilePath());
+					+ mapping.getDistantFileUrl() + " path "
+					+ mapping.getLocalFilePath());
 		}
 		trace("AUO browser header " + headerChanged);
 		byte[] b2 = headerChanged.getBytes();
@@ -117,27 +120,54 @@ public class ServerChildSocket implements Runnable {
 		return newOffset;
 	}
 
+	private String lookForHeaderField(final String headerField,
+			final String header) {
+		String payload = null;
+		int l = headerField.length();
+		int begin = header.indexOf(headerField) + l;
+		int end = header.indexOf("\r\n", begin);
+		if (begin != l - 1) {
+			payload = header.substring(begin, end);
+		} else {
+			payload = null;
+		}
+
+		return payload;
+	}
+
 	private int computeFileBufferOffsetInServerMessage(byte[] b,
 			boolean firstOcc) {
 		int offset = 0;
 		if (firstOcc) {
 			String header = new String(b, 0, HEADER_SERVER_SIZE);
+
+			if (mapping != null) {
+				mapping.contentType = lookForHeaderField(
+						"Content-Type: ", header);
+				mapping.transferEncoding = lookForHeaderField(
+						"Transfer-Encoding: ", header);
+				mapping.contentEncoding = lookForHeaderField(
+						"Content-Encoding: ", header);
+			}
 			// file comes after an empty line (CRLF)
 			offset = header.indexOf("\r\n\r\n") + 4;
 
-			trace("AUO offset " + offset + " server header " + header);
+			trace("AUO00 mapping" + mapping.contentType + " " + mapping.transferEncoding + " " + mapping.contentEncoding);
+			trace("AUO01 offset " + offset + " server header " + header);
 		}
 		return offset;
 	}
 
 	private int buildServerReplyHeader(byte[] b) {
-		String contentType = "text/html";
+		String contentType = (mapping == null) ? "text/html;charset=UTF-8"
+				: mapping.contentType;
 		String header = "HTTP/1.1 200 OK\r\n" + "Server: Apache-Coyote/1.1\r\n"
-				+ "Content-Type: "+contentType+";charset=UTF-8\r\n"
-				+ "Transfer-Encoding: chunked\r\n"
-				+ "Vary: Accept-Encoding\r\n"
-				+ "Date: "+ (new Date()).toString() +"\r\n"
-				+ "\r\n";
+				+ "Content-Type: " + contentType + "\r\n"
+				//+ "Transfer-Encoding: chunked\r\n"
+				//+ "Vary: Accept-Encoding\r\n"
+				+ "Content-Length: " + b.length
+				+ "Date: " + (new Date()).toString() 
+				+ "\r\n" + "\r\n";
 
 		byte[] b2 = header.getBytes();
 		if (b2.length > HEADER_SERVER_SIZE) {
@@ -148,6 +178,29 @@ public class ServerChildSocket implements Runnable {
 			b[newOffset + i] = b2[i];
 		}
 		return newOffset;
+	}
+
+	private int unchunckedBuffer(byte[] b, int filePos) {
+		int writePos = filePos;
+		while (true) {
+			int chunckSize = 0;
+			// skipp size bytes and compute chunckSize
+			for (; ; filePos++) {
+				byte currentByte = b[filePos];
+				if (currentByte == 0x0D) {
+					filePos++;
+					break;
+				}
+				currentByte = (byte) (currentByte - 0x30);
+				currentByte = (byte) (currentByte > 0x9?currentByte - 0x7:currentByte);
+				currentByte = (byte) (currentByte > 0xF?currentByte - 0x20:currentByte);
+				chunckSize = chunckSize == 0?currentByte:(chunckSize << 4) + currentByte;
+			}
+			System.arraycopy(b, filePos, b, writePos, chunckSize);
+			writePos += chunckSize;
+			break;
+		}
+		return 0;
 	}
 
 	@Override
@@ -167,10 +220,9 @@ public class ServerChildSocket implements Runnable {
 			osWebServer = webServerSock.getOutputStream();
 
 			// TODO: ugly but works most of the time :(
-			while (!server.toBreak
-					&& (isWebServer.available() > 0
-							|| isBrowser.available() > 0 || 
-							(isMappedFile != null && isMappedFile.available() > 0))) {
+			while (!server.toBreak && (isWebServer.available() > 0
+					|| isBrowser.available() > 0 
+					|| (isMappedFile != null && isMappedFile.available() > 0))) {
 				boolean mustTakeCareOfHeaders = true;
 				int lengthRead = 0;
 				while (!server.toBreak && isBrowser.available() > 0
@@ -179,17 +231,18 @@ public class ServerChildSocket implements Runnable {
 					// it to server until there is nothing to transmit from the browser
 					lengthRead = isBrowser.read(b, BUFF_OFFSET, BUFF_SIZE
 							- BUFF_OFFSET);
-					trace("AUO0 loop "+lengthRead+new String(b,BUFF_OFFSET, 200));
+					trace("AUO0 loop " + lengthRead
+							+ new String(b, BUFF_OFFSET, 200));
 					int newOffset = BUFF_OFFSET;
 
-						newOffset = transformRequestMessage(b, lengthRead);
-						mustTakeCareOfHeaders = false;
+					newOffset = transformRequestMessage(b, lengthRead);
+					mustTakeCareOfHeaders = false;
 
 					osWebServer.write(b, newOffset, lengthRead + BUFF_OFFSET
 							- newOffset);
 					Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);
 				}
-				
+
 				if (isMappedFile != null) {
 					isMappedFile.close();
 					isMappedFile = null;
@@ -199,13 +252,13 @@ public class ServerChildSocket implements Runnable {
 					osMappedFile = null;
 				}
 
-					if (mappedFile != null && mappedFileExists
-							&& mappedFile.length() > 0) {
-						isMappedFile = new FileInputStream(mappedFile);
-					} else if (mappedFile != null
-							&& (!mappedFileExists || mappedFile.length() == 0)) {
-						osMappedFile = new FileOutputStream(mappedFile);
-					}
+				if (mappedFile != null && mappedFileExists
+						&& mappedFile.length() > 0) {
+					isMappedFile = new FileInputStream(mappedFile);
+				} else if (mappedFile != null
+						&& (!mappedFileExists || mappedFile.length() == 0)) {
+					osMappedFile = new FileOutputStream(mappedFile);
+				}
 
 				int lengthToWrite = 0;
 				mustTakeCareOfHeaders = true;
@@ -213,8 +266,7 @@ public class ServerChildSocket implements Runnable {
 
 				if (isMappedFile != null) {
 					// send existing file content to browser
-					while (isMappedFile.available() > 0
-							/* && isBrowser.available() */) {
+					while (isMappedFile.available() > 0) {
 						int bufferOffset = HEADER_SERVER_SIZE;
 						int lengthFileRead = isMappedFile.read(b, bufferOffset,
 								b.length - bufferOffset);
@@ -224,7 +276,7 @@ public class ServerChildSocket implements Runnable {
 								mustTakeCareOfHeaders = false;
 							}
 						}
-						trace("AUO1 loop "+lengthFileRead);
+						trace("AUO1 loop " + lengthFileRead);
 						osBrowser.write(b, bufferOffset, lengthFileRead);
 					}
 
@@ -236,7 +288,8 @@ public class ServerChildSocket implements Runnable {
 							&& (mustTakeCareOfHeaders || isWebServer
 									.available() > 0) && lengthToWrite != -1) {
 						lengthToWrite = isWebServer.read(b);
-						trace("AUO2 loop "+lengthToWrite + " " + new String(b, 0, 512));
+						trace("AUO2 loop " + lengthToWrite + " "
+								+ new String(b, 0, 512));
 
 						if (lengthToWrite > 0)
 							osBrowser.write(b, 0, lengthToWrite);
@@ -246,6 +299,7 @@ public class ServerChildSocket implements Runnable {
 							// exist
 							int filePos = computeFileBufferOffsetInServerMessage(
 									b, mustTakeCareOfHeaders);
+							unchunckedBuffer(b, filePos);
 							osMappedFile.write(b, filePos, lengthToWrite
 									- filePos);
 						}
