@@ -165,7 +165,7 @@ public class ServerChildSocket implements Runnable {
 				+ "Content-Type: " + contentType + "\r\n"
 				//+ "Transfer-Encoding: chunked\r\n"
 				//+ "Vary: Accept-Encoding\r\n"
-				+ "Content-Length: " + b.length
+				+ "Content-Length: " + b.length + "\r\n"
 				+ "Date: " + (new Date()).toString() 
 				+ "\r\n" + "\r\n";
 
@@ -177,6 +177,8 @@ public class ServerChildSocket implements Runnable {
 		for (int i = 0; i < b2.length; i++) {
 			b[newOffset + i] = b2[i];
 		}
+		
+		trace("AUOAUOAUOAUOAUO "+ new String(b, newOffset, HEADER_SERVER_SIZE));
 		return newOffset;
 	}
 
