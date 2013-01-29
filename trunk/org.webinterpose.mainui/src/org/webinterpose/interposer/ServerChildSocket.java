@@ -132,7 +132,6 @@ public class ServerChildSocket implements Runnable {
 				+ "Content-Type: "+contentType+";charset=UTF-8\r\n"
 				+ "Transfer-Encoding: chunked\r\n"
 				+ "Vary: Accept-Encoding\r\n"
-				// boring: "Date: "+"\r\n" + // like Date: Mon, 28 Jan 2013 10:14:11 GMT
 				+ "Date: "+ (new Date()).toString() +"\r\n"
 				+ "\r\n";
 
@@ -163,8 +162,6 @@ public class ServerChildSocket implements Runnable {
 			isWebServer = webServerSock.getInputStream();
 			osWebServer = webServerSock.getOutputStream();
 
-			//boolean mustCreateFileStreamsIfNeeded = true;
-			//boolean onlyAck = false;
 			// TODO: ugly but works most of the time :(
 			while (!server.toBreak
 					&& (isWebServer.available() > 0
@@ -181,10 +178,8 @@ public class ServerChildSocket implements Runnable {
 					trace("AUO0 loop "+lengthRead+new String(b,BUFF_OFFSET, 200));
 					int newOffset = BUFF_OFFSET;
 
-					//if (mustTakeCareOfHeaders && !onlyAck) {
 						newOffset = transformRequestMessage(b, lengthRead);
 						mustTakeCareOfHeaders = false;
-					//}
 
 					osWebServer.write(b, newOffset, lengthRead + BUFF_OFFSET
 							- newOffset);
@@ -200,8 +195,6 @@ public class ServerChildSocket implements Runnable {
 					osMappedFile = null;
 				}
 
-				//if (mustCreateFileStreamsIfNeeded) {
-//					mustCreateFileStreamsIfNeeded = false;
 					if (mappedFile != null && mappedFileExists
 							&& mappedFile.length() > 0) {
 						isMappedFile = new FileInputStream(mappedFile);
@@ -209,7 +202,6 @@ public class ServerChildSocket implements Runnable {
 							&& (!mappedFileExists || mappedFile.length() == 0)) {
 						osMappedFile = new FileOutputStream(mappedFile);
 					}
-				//}
 
 				int lengthToWrite = 0;
 				mustTakeCareOfHeaders = true;
@@ -240,7 +232,7 @@ public class ServerChildSocket implements Runnable {
 							&& (mustTakeCareOfHeaders || isWebServer
 									.available() > 0) && lengthToWrite != -1) {
 						lengthToWrite = isWebServer.read(b);
-						trace("AUO2 loop "+lengthToWrite + " " + new String(b, 0, 120));
+						trace("AUO2 loop "+lengthToWrite + " " + new String(b, 0, 512));
 
 						if (lengthToWrite > 0)
 							osBrowser.write(b, 0, lengthToWrite);
@@ -248,8 +240,6 @@ public class ServerChildSocket implements Runnable {
 						if (osMappedFile != null) {
 							// save file if resource mapped (and file does not
 							// exist
-							System.out.println("AUO1111********** "+new String(b));
-							System.out.println("AUO1111********** ");
 							int filePos = computeFileBufferOffsetInServerMessage(
 									b, mustTakeCareOfHeaders);
 							osMappedFile.write(b, filePos, lengthToWrite
