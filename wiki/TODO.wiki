@@ -8,6 +8,7 @@
   * Manage redirect
   * Avoid waiting time
   * overwrite html file content for links/src attributes pointing to the original domain
+  * Manage when multiple GET are in the same while occurence
 
 == UI == 
   * Many Proxy views in a single instance app
