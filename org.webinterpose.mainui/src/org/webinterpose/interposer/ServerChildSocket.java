@@ -7,8 +7,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Locale;
 
 import org.webinterpose.mainui.InterposerView.Mapping;
 
@@ -70,7 +72,7 @@ public class ServerChildSocket implements Runnable {
 	private final static int BUFF_SIZE = 1024 * 64;
 	private final static int HEADER_BROWSER_SIZE = 1024;
 	private final static int HEADER_SERVER_SIZE = 512;
-	private final static int THE_WAIT_THAT_I_DONT_WANT = 100;
+	private final static int THE_WAIT_THAT_I_DONT_WANT = 250;
 	private Mapping mapping = null;
 
 	private int transformRequestMessage(byte[] b, int length)
@@ -84,14 +86,19 @@ public class ServerChildSocket implements Runnable {
 
 		String headerChanged = header.replace("localhost:" + server.localPort,
 				server.domain);
+
 		mappedFile = null;
 		mappedFileExists = false;
 		if (server.mapOfMappedMapping.containsKey(resource)) {
 			// avoid caches and compression if resource mapped to a file
+			// [1] http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html (search 304)
 			headerChanged = headerChanged
-					.replace("Accept-Encoding", "AUO-invalid2")
-					.replace("Cache-Control: ", "Cache-Control: no-cache,")
-					.replace("If-Modified-Since", "AUO-invalid");
+					.replace("Accept-Encoding", "AUO-invalid1")
+					.replaceFirst("Cache-Control: .*", "AUO-invazlid2: toto")
+					//"Cache-Control: no-cache") // see [1]
+					.replace("If-Modified-Since", "AUO-invalid3")
+					.replace("If-None-Match:", "AUO-invalid4");
+
 			mapping = server.mapOfMappedMapping.get(resource);
 
 			mappedFile = new File(mapping.getLocalDirectory()
@@ -152,22 +159,26 @@ public class ServerChildSocket implements Runnable {
 			// file comes after an empty line (CRLF)
 			offset = header.indexOf("\r\n\r\n") + 4;
 
-			trace("AUO00 mapping" + mapping.contentType + " " + mapping.transferEncoding + " " + mapping.contentEncoding);
+			trace("AUO00 mapping " + mapping.contentType + " " + mapping.transferEncoding + " " + mapping.contentEncoding);
 			trace("AUO01 offset " + offset + " server header " + header);
 		}
 		return offset;
 	}
 
+	private static final SimpleDateFormat httpDateFormat = new SimpleDateFormat(
+			"EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH);
+	
 	private int buildServerReplyHeader(byte[] b) {
 		String contentType = (mapping == null) ? "text/html;charset=UTF-8"
 				: mapping.contentType;
-		String header = "HTTP/1.1 200 OK\r\n" + "Server: Apache-Coyote/1.1\r\n"
+		String header = "HTTP/1.1 200 OK\r\n" //+ "Server: Apache-Coyote/1.1\r\n"
+				+ "Accept-Ranges: bytes\r\n"
+				+ "Date: " + httpDateFormat.format(new Date()) + "\r\n"
 				+ "Content-Type: " + contentType + "\r\n"
 				//+ "Transfer-Encoding: chunked\r\n"
 				//+ "Vary: Accept-Encoding\r\n"
-				+ "Content-Length: " + b.length + "\r\n"
-				+ "Date: " + (new Date()).toString() 
-				+ "\r\n" + "\r\n";
+				+ "Content-Length: " + mappedFile.length() + "\r\n"
+				+ "\r\n";
 
 		byte[] b2 = header.getBytes();
 		if (b2.length > HEADER_SERVER_SIZE) {
@@ -177,7 +188,7 @@ public class ServerChildSocket implements Runnable {
 		for (int i = 0; i < b2.length; i++) {
 			b[newOffset + i] = b2[i];
 		}
-		
+
 		trace("AUOAUOAUOAUOAUO "+ new String(b, newOffset, HEADER_SERVER_SIZE));
 		return newOffset;
 	}
@@ -193,7 +204,7 @@ public class ServerChildSocket implements Runnable {
 					filePos+=2; // "\r\n before payload
 					break;
 				}
-				
+
 				// pipeline conditional
 				currentByte = (byte) (currentByte - 0x30);
 				currentByte = (byte) (currentByte > 0x9?currentByte - 0x7:currentByte);
@@ -225,20 +236,22 @@ public class ServerChildSocket implements Runnable {
 			isWebServer = webServerSock.getInputStream();
 			osWebServer = webServerSock.getOutputStream();
 
+
 			// TODO: ugly but works most of the time :(
 			while (!server.toBreak && (isWebServer.available() > 0
 					|| isBrowser.available() > 0 
 					|| (isMappedFile != null && isMappedFile.available() > 0))) {
 				boolean mustTakeCareOfHeaders = true;
 				int lengthRead = 0;
-				while (!server.toBreak && isBrowser.available() > 0
-						&& lengthRead != -1) {
+				//				while (!server.toBreak && isBrowser.available() > 0
+				//						&& lengthRead != -1) {
+				if (isBrowser.available() > 0) {
 					// read request and acknowledgment from browser and transmit
 					// it to server until there is nothing to transmit from the browser
 					lengthRead = isBrowser.read(b, BUFF_OFFSET, BUFF_SIZE
 							- BUFF_OFFSET);
 					trace("AUO0 loop " + lengthRead
-							+ new String(b, BUFF_OFFSET, 200));
+							+ new String(b, BUFF_OFFSET, 2048));
 					int newOffset = BUFF_OFFSET;
 
 					newOffset = transformRequestMessage(b, lengthRead);
@@ -246,7 +259,7 @@ public class ServerChildSocket implements Runnable {
 
 					osWebServer.write(b, newOffset, lengthRead + BUFF_OFFSET
 							- newOffset);
-					Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);
+					Thread.sleep(THE_WAIT_THAT_I_DONT_WANT); // DO NOT REMOVE
 				}
 
 				if (isMappedFile != null) {
@@ -305,17 +318,25 @@ public class ServerChildSocket implements Runnable {
 							// exist
 							int filePos = computeFileBufferOffsetInServerMessage(
 									b, mustTakeCareOfHeaders);
-							int lastWritePos = unchunckedBuffer(b, filePos, bytesRead);
-							trace("AUO-------"+(lastWritePos - filePos)+"----------- "+new String(b, filePos, 512));
-							osMappedFile.write(b, filePos, lastWritePos - filePos);
+							if (mapping != null && "chunked".equals(mapping.transferEncoding)) {
+								int lastWritePos = unchunckedBuffer(b, filePos, bytesRead);
+								trace("AUO-------"+(lastWritePos - filePos)+"----------- "+new String(b, filePos, 512));
+								osMappedFile.write(b, filePos, lastWritePos - filePos);
+							} else {
+								osMappedFile.write(b, filePos, bytesRead - filePos);
+							}
 						}
 						Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);
 						mustTakeCareOfHeaders = false;
 					}
 				}
+				Arrays.fill(b, (byte) 0);
 			}
 		} catch (IOException | InterruptedException e) {
-			trace("IOEXCEPTION !!!");
+			trace("IOEXCEPTION !!! "+ e.getMessage()+ " ");
+			for ( StackTraceElement st : e.getStackTrace()) {
+				trace("IOEXCEPTION !!!" + st.toString());
+			}
 		} finally {
 			try {
 				if (isBrowser != null)

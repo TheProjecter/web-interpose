@@ -278,6 +278,7 @@ public class InterposerView extends ViewPart {
 			txtDomain.setText(memDomain != null?memDomain:"");
 
 			String memMappings = memento.getString(STRING_MAPPINGS);
+			System.out.println("AUO memento mappings " + memMappings);
 			if (memMappings != null && memMappings.length() > 0) {
 				String[] mappingsToRestore = memMappings.split("\\|");
 				Vector<Mapping> mappingRestored = new Vector<>();
