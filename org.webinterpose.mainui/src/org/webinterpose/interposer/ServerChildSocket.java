@@ -108,11 +108,10 @@ public class ServerChildSocket implements Runnable {
 				File enclosingDir = mappedFile.getParentFile();
 				enclosingDir.mkdirs();
 			}
-			trace("Mapped file exist: " + mappedFileExists + " url "
-					+ mapping.getDistantFileUrl() + " path "
+			trace("Mapped file exist? " + mappedFileExists + " url? "
+					+ mapping.getDistantFileUrl() + " path? "
 					+ mapping.getLocalFilePath());
 		}
-		trace("AUO browser header " + headerChanged);
 		byte[] b2 = headerChanged.getBytes();
 
 		final int newOffset = BUFF_OFFSET - b2.length - HEADER_BROWSER_SIZE;
@@ -155,12 +154,11 @@ public class ServerChildSocket implements Runnable {
 						"Transfer-Encoding: ", header);
 				mapping.contentEncoding = lookForHeaderField(
 						"Content-Encoding: ", header);
+				mapping.contentLength = lookForHeaderField(
+						"Content-Length: ", header);
 			}
 			// file comes after an empty line (CRLF)
 			offset = header.indexOf("\r\n\r\n") + 4;
-
-			trace("AUO00 mapping " + mapping.contentType + " " + mapping.transferEncoding + " " + mapping.contentEncoding);
-			trace("AUO01 offset " + offset + " server header " + header);
 		}
 		return offset;
 	}
@@ -171,7 +169,7 @@ public class ServerChildSocket implements Runnable {
 	private int buildServerReplyHeader(byte[] b) {
 		String contentType = (mapping == null) ? "text/html;charset=UTF-8"
 				: mapping.contentType;
-		String header = "HTTP/1.1 200 OK\r\n" //+ "Server: Apache-Coyote/1.1\r\n"
+		String header = "HTTP/1.1 200 OK\r\n"
 				+ "Accept-Ranges: bytes\r\n"
 				+ "Date: " + httpDateFormat.format(new Date()) + "\r\n"
 				+ "Content-Type: " + contentType + "\r\n"
@@ -188,8 +186,6 @@ public class ServerChildSocket implements Runnable {
 		for (int i = 0; i < b2.length; i++) {
 			b[newOffset + i] = b2[i];
 		}
-
-		trace("AUOAUOAUOAUOAUO "+ new String(b, newOffset, HEADER_SERVER_SIZE));
 		return newOffset;
 	}
 
@@ -243,15 +239,12 @@ public class ServerChildSocket implements Runnable {
 					|| (isMappedFile != null && isMappedFile.available() > 0))) {
 				boolean mustTakeCareOfHeaders = true;
 				int lengthRead = 0;
-				//				while (!server.toBreak && isBrowser.available() > 0
-				//						&& lengthRead != -1) {
 				if (isBrowser.available() > 0) {
 					// read request and acknowledgment from browser and transmit
-					// it to server until there is nothing to transmit from the browser
+					// it to server.
+					// TODO split requests when more than one (i.e. for konqueror)
 					lengthRead = isBrowser.read(b, BUFF_OFFSET, BUFF_SIZE
 							- BUFF_OFFSET);
-					trace("AUO0 loop " + lengthRead
-							+ new String(b, BUFF_OFFSET, 2048));
 					int newOffset = BUFF_OFFSET;
 
 					newOffset = transformRequestMessage(b, lengthRead);
@@ -295,8 +288,6 @@ public class ServerChildSocket implements Runnable {
 								mustTakeCareOfHeaders = false;
 							}
 						}
-						trace("AUO1 loop " + lengthFileRead);
-						// AUO TODO fix that !!!
 						osBrowser.write(b, bufferOffset, 
 								lengthFileRead + HEADER_SERVER_SIZE - bufferOffset);
 					}
@@ -304,13 +295,11 @@ public class ServerChildSocket implements Runnable {
 					break;
 				} else {
 					// forward the content of the server message to the browser
-					// TODO save all message to file and make see why it does not work on Chrome
 					while (!server.toBreak
 							&& lengthRead >= 0
 							&& (mustTakeCareOfHeaders || isWebServer
 									.available() > 0) && bytesRead != -1) {
 						bytesRead = isWebServer.read(b);
-						trace("AUO2 loop " + bytesRead + " " + new String(b, 0, 512));
 
 						if (bytesRead > 0)
 							osBrowser.write(b, 0, bytesRead);
@@ -322,13 +311,10 @@ public class ServerChildSocket implements Runnable {
 									b, mustTakeCareOfHeaders);
 							if (mapping != null && "chunked".equals(mapping.transferEncoding)) {
 								int lastWritePos = unchunckedBuffer(b, filePos, bytesRead);
-								trace("AUO-------"+(lastWritePos - filePos)+"----------- "+new String(b, filePos, 512));
 								osMappedFile.write(b, filePos, lastWritePos - filePos);
 							} else {
-								//AUOrestore 
-								osMappedFile.write(b, filePos, bytesRead - filePos);
-								trace("aaaAAUOOOAUO "+filePos+" "+bytesRead);
-								//osMappedFile.write(b, 0, bytesRead);
+								osMappedFile.write(b, filePos, 
+										(mapping != null)?Integer.parseInt(mapping.contentLength):bytesRead - filePos);
 							}
 						}
 						Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);

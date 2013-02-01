@@ -117,6 +117,7 @@ public class InterposerView extends ViewPart {
 	
 	// ugly but straightforward
 	public class Mapping {
+		public String contentLength;
 		String distantFileUrl;
 		String localFilePath;
 		public String contentType;
