@@ -177,8 +177,8 @@ public class ServerChildSocket implements Runnable {
 				+ "Content-Type: " + contentType + "\r\n"
 				//+ "Transfer-Encoding: chunked\r\n"
 				//+ "Vary: Accept-Encoding\r\n"
-				+ "Content-Length: " + mappedFile.length() + "\r\n"
-				+ "\r\n";
+				+ "Content-Length: " + (mappedFile.length()) + "\r\n"
+				+ "\r\n";		
 
 		byte[] b2 = header.getBytes();
 		if (b2.length > HEADER_SERVER_SIZE) {
@@ -296,19 +296,21 @@ public class ServerChildSocket implements Runnable {
 							}
 						}
 						trace("AUO1 loop " + lengthFileRead);
-						osBrowser.write(b, bufferOffset, lengthFileRead);
+						// AUO TODO fix that !!!
+						osBrowser.write(b, bufferOffset, 
+								lengthFileRead + HEADER_SERVER_SIZE - bufferOffset);
 					}
 
 					break;
 				} else {
 					// forward the content of the server message to the browser
+					// TODO save all message to file and make see why it does not work on Chrome
 					while (!server.toBreak
 							&& lengthRead >= 0
 							&& (mustTakeCareOfHeaders || isWebServer
 									.available() > 0) && bytesRead != -1) {
 						bytesRead = isWebServer.read(b);
-						trace("AUO2 loop " + bytesRead + " "
-								+ new String(b, 0, 512));
+						trace("AUO2 loop " + bytesRead + " " + new String(b, 0, 512));
 
 						if (bytesRead > 0)
 							osBrowser.write(b, 0, bytesRead);
@@ -323,7 +325,10 @@ public class ServerChildSocket implements Runnable {
 								trace("AUO-------"+(lastWritePos - filePos)+"----------- "+new String(b, filePos, 512));
 								osMappedFile.write(b, filePos, lastWritePos - filePos);
 							} else {
+								//AUOrestore 
 								osMappedFile.write(b, filePos, bytesRead - filePos);
+								trace("aaaAAUOOOAUO "+filePos+" "+bytesRead);
+								//osMappedFile.write(b, 0, bytesRead);
 							}
 						}
 						Thread.sleep(THE_WAIT_THAT_I_DONT_WANT);
